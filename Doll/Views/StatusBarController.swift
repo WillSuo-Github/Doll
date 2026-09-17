@@ -5,11 +5,34 @@ import SwiftUI
 let defaultIconSize: CGFloat = 20
 let defaultIcon = #imageLiteral(resourceName: "DefaultStatusBarIcon")
 
+private final class FocusPreservingPopoverDelegate: NSObject, NSPopoverDelegate {
+    func popoverWillShow(_ notification: Notification) {
+        guard let popover = notification.object as? NSPopover else {
+            return
+        }
+
+        configure(popover)
+    }
+
+    func configure(_ popover: NSPopover) {
+        guard let window = popover.contentViewController?.view.window else {
+            return
+        }
+
+        // A notification is informational and must not interrupt typing in the
+        // full-screen app behind it. Keep the popover clickable without making
+        // its app/window the keyboard target.
+        window.styleMask.insert(.nonactivatingPanel)
+        (window as? NSPanel)?.becomesKeyOnlyIfNeeded = true
+    }
+}
+
 class StatusBarController {
     private var statusBar: NSStatusBar!
     private var isDark = false
     private var latestBadgeText = ""
     private var latestMessageCount = 0
+    private let notificationPopoverDelegate = FocusPreservingPopoverDelegate()
 
     private var giantBadgeController = GiantBadgeViewController()
     private var giantBadgePanel = NSPanel(contentRect: NSRect(origin: .zero, size: defaultWindowSize),
@@ -132,6 +155,9 @@ class StatusBarController {
     func showPopover(popover: NSPopover? = nil) {
         if let statusBarButton = statusItem.button {
             popover?.show(relativeTo: statusBarButton.bounds, of: statusBarButton, preferredEdge: .maxY)
+            if let popover {
+                notificationPopoverDelegate.configure(popover)
+            }
             if let contentWindow = popover?.contentViewController?.view.window {
                 // A little hack to prevent popover shitup with menubar
                 // https://stackoverflow.com/a/35047661
@@ -308,6 +334,7 @@ class StatusBarController {
         let verticalPadding: CGFloat = 16
         notificationPopover.contentSize = NSSize(width: defaultIconSize + textWidth + horizonPadding, height: defaultIconSize + verticalPadding)
         notificationPopover.behavior = .transient
+        notificationPopover.delegate = notificationPopoverDelegate
         notificationPopover.setValue(true, forKeyPath: "shouldHideAnchor")
 
         let targetApp = monitoredApp
